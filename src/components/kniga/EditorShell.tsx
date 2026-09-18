@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   BookOpen,
   Bookmark,
+  ChevronUp,
   ClipboardList,
   Download,
   FolderOpen,
+  Globe,
   Library,
   Menu,
   RotateCcw,
@@ -42,6 +44,7 @@ import {
   getNextDialogueStep,
 } from "@/lib/kniga/gameEngine.ts";
 import { parseBookText, parseErrorMessage, stampStory } from "@/lib/kniga/marker.ts";
+import { publishBook } from "@/lib/catalog/books.ts";
 import {
   clearActiveDraft,
   deleteDraft,
@@ -91,6 +94,7 @@ function withDiscovered(base: Record<string, number>, current: Record<string, nu
 }
 
 export function EditorShell() {
+  const navigate = useNavigate();
   const story = useStoryStore((s) => s.story);
   const currentSceneId = useStoryStore((s) => s.currentSceneId);
   const hydrated = useStoryStore((s) => s.hydrated);
@@ -138,6 +142,7 @@ export function EditorShell() {
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [drafts, setDrafts] = useState<DraftMeta[]>([]);
   const [activeDraftId, setActiveDraftIdState] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState(false);
 
   const lastTabRef = useRef<EditorTab>("editor");
   const transferOnEditorEntry = useRef(false);
@@ -595,6 +600,33 @@ export function EditorShell() {
     toast.success("Файл .story сохранён");
   }
 
+  async function publishToSite() {
+    if (publishing) return;
+    setPublishing(true);
+    try {
+      const payload = stampStory(storyForExport());
+      const meta = await publishBook({
+        data: {
+          fileName: `${fileBaseName(payload.title)}.story`,
+          text: JSON.stringify(payload, null, 2),
+        },
+      });
+      setFileMenu(false);
+      toast.success(`«${meta.title}» в каталоге`, {
+        action: {
+          label: "Читать",
+          onClick: () => {
+            void navigate({ to: "/read/$bookId", params: { bookId: meta.id } });
+          },
+        },
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Не удалось опубликовать");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
   function exportCleanStory() {
     const clean = {
       ...story,
@@ -714,14 +746,15 @@ export function EditorShell() {
               refreshDrafts();
               setDraftsOpen(true);
             }}
-            className="inline-flex min-h-12 shrink-0 items-center gap-2 border-l border-border px-3 text-sm text-ink hover:bg-muted"
+            className="inline-flex min-h-12 w-12 shrink-0 items-center justify-center gap-2 border-l border-border text-sm text-ink hover:bg-muted md:w-auto md:px-3"
+            aria-label="Мои книги"
           >
             <Library className="size-4" />
-            Книги
+            <span className="hidden md:inline">Книги</span>
           </button>
           <Link
             to="/"
-            className="inline-flex min-h-12 shrink-0 items-center border-l border-border px-3 text-sm text-accent hover:bg-muted"
+            className="inline-flex min-h-12 shrink-0 items-center border-l border-border px-2.5 text-sm text-accent hover:bg-muted md:px-3"
           >
             Каталог
           </Link>
@@ -919,28 +952,34 @@ export function EditorShell() {
           </div>
         ) : null}
 
-        <footer className="border-t border-border bg-card px-3 py-2 md:px-4 md:py-3">
-          <div className="flex gap-2 md:hidden">
-            <Button className="min-h-12 flex-1" onClick={() => saveCurrentBook()}>
-              <Bookmark className="size-4" />
-              В книги
-            </Button>
-            <Button className="min-h-12 flex-1" onClick={exportStory}>
-              <Download className="size-4" />
-              Сохранить
-            </Button>
-            <Button className="min-h-12 flex-1" asChild>
-              <label htmlFor="kniga-open-story">
-                <FolderOpen className="size-4" />
-                Открыть
-              </label>
-            </Button>
-            <Button className="min-h-12 flex-1" variant="secondary" onClick={() => setFileMenu(true)}>
-              Ещё
-            </Button>
+        <footer className="border-t border-border bg-card md:px-4 md:py-3">
+          <div className="grid grid-cols-2 divide-x divide-border md:hidden">
+            <button
+              type="button"
+              className="flex min-h-11 items-center justify-center gap-2 px-3 text-sm font-medium text-ink"
+              onClick={() => setFileMenu(true)}
+              aria-expanded={fileMenu}
+              aria-haspopup="dialog"
+            >
+              <ChevronUp className="size-4" />
+              Файл
+            </button>
+            <button
+              type="button"
+              className="flex min-h-11 items-center justify-center gap-2 px-3 text-sm font-medium text-ink"
+              onClick={() => setShowBuffer((v) => !v)}
+              aria-expanded={showBuffer}
+            >
+              <ChevronUp className={cn("size-4 transition-transform duration-[var(--motion-quick)]", showBuffer && "rotate-180")} />
+              Буфер{buffer.length ? ` (${buffer.length})` : ""}
+            </button>
           </div>
           <div className="hidden flex-wrap gap-2 md:flex">
-            <Button onClick={() => saveCurrentBook()}>
+            <Button onClick={() => void publishToSite()} disabled={publishing}>
+              <Globe className="size-4" />
+              {publishing ? "Публикация…" : "Опубликовать"}
+            </Button>
+            <Button variant="secondary" onClick={() => saveCurrentBook()}>
               <Bookmark className="size-4" />
               Сохранить книгу
             </Button>
@@ -1040,16 +1079,39 @@ export function EditorShell() {
       />
 
       {fileMenu ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-3 md:items-center">
-          <div className="w-full max-w-sm rounded-xl border border-border bg-card p-4 shadow-lg">
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-3 md:hidden"
+          onClick={() => setFileMenu(false)}
+        >
+          <div
+            role="dialog"
+            aria-label="Файл и черновик"
+            className="flex max-h-[85dvh] w-full max-w-sm flex-col rounded-xl border border-border bg-card p-4 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="mb-3 flex items-center justify-between">
               <h2 className="font-display text-lg font-medium">Файл и черновик</h2>
               <button type="button" className="size-10" onClick={() => setFileMenu(false)} aria-label="Закрыть">
                 <X className="mx-auto size-4" />
               </button>
             </div>
-            <div className="grid gap-2">
+            <div className="grid min-h-0 gap-2 overflow-y-auto">
+              <Button onClick={() => void publishToSite()} disabled={publishing}>
+                <Globe className="size-4" />
+                {publishing ? "Публикация…" : "Опубликовать"}
+              </Button>
               <Button
+                variant="secondary"
+                onClick={() => {
+                  saveCurrentBook();
+                  setFileMenu(false);
+                }}
+              >
+                <Bookmark className="size-4" />
+                Сохранить книгу
+              </Button>
+              <Button
+                variant="secondary"
                 onClick={() => {
                   setFileMenu(false);
                   refreshDrafts();
@@ -1060,21 +1122,32 @@ export function EditorShell() {
                 Мои книги
               </Button>
               <Button
-                variant="secondary"
+                variant="outline"
                 onClick={() => {
-                  saveCurrentBook();
+                  exportStory();
                   setFileMenu(false);
                 }}
               >
-                Сохранить книгу
+                <Download className="size-4" />
+                Сохранить .story
+              </Button>
+              <Button variant="outline" asChild>
+                <label
+                  htmlFor="kniga-open-story"
+                  onClick={() => setFileMenu(false)}
+                >
+                  <FolderOpen className="size-4" />
+                  Загрузить
+                </label>
               </Button>
               <Button
-                variant="secondary"
+                variant="outline"
                 onClick={() => {
                   exportCleanStory();
                   setFileMenu(false);
                 }}
               >
+                <Upload className="size-4" />
                 Чистая версия .story
               </Button>
               <Button
@@ -1110,15 +1183,6 @@ export function EditorShell() {
                 }}
               >
                 Сбросить статы
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setShowBuffer(true);
-                  setFileMenu(false);
-                }}
-              >
-                Буфер ответов ({buffer.length})
               </Button>
             </div>
           </div>

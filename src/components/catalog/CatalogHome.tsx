@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Link, useRouter } from "@tanstack/react-router";
-import { BookOpen, FolderOpen, PenLine, Upload } from "lucide-react";
+import { BookOpen, Download, FolderOpen, PenLine, Server, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -72,6 +72,52 @@ export function CatalogHome({ books: initial }: Props) {
             Книги. Случайные страницы не принимаются.
           </p>
         </div>
+
+        <section className="rounded-xl border border-border bg-card p-5 md:p-6">
+          <h2 className="font-display text-2xl font-medium tracking-tight">Мастерская на компьютер</h2>
+          <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
+            Локальный редактор: пишете на своей машине, готовую книгу публикуете сюда. Windows —
+            распакуйте архив и запустите «Установить.bat» или сразу Kniga.exe. Ubuntu — откройте
+            .deb двойным щелчком или через установку приложений.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <a className={buttonVariants()} href="/downloads/Kniga-1.0.0-windows.zip" download>
+              <Download className="size-4" />
+              Windows
+            </a>
+            <a className={buttonVariants({ variant: "secondary" })} href="/downloads/kniga_1.0.0_amd64.deb" download>
+              <Download className="size-4" />
+              Ubuntu
+            </a>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-border bg-card p-5 md:p-6">
+          <h2 className="flex items-center gap-2 font-display text-2xl font-medium tracking-tight">
+            <Server className="size-5" strokeWidth={1.75} />
+            На свой сервер
+          </h2>
+          <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
+            Сайт — каталог, мастерская и чтение. На Ubuntu с Docker:
+          </p>
+          <pre className="mt-3 overflow-x-auto rounded-lg bg-muted p-4 text-xs leading-relaxed text-ink">
+            {`git clone https://github.com/niiu/kniga-web.git
+cd kniga-web
+docker compose up -d --build
+PORT=3000 docker compose up -d --build`}
+          </pre>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+            Без PORT сайт на 8080. С <span className="font-mono">PORT=3000</span> — на 3000.
+            Каталог сохраняется в томе Docker. Репозиторий открытый:
+            {" "}
+            <a className="text-accent hover:underline" href="https://github.com/niiu/kniga-web">
+              github.com/niiu/kniga-web
+            </a>
+            . Без Docker: Node 22, затем{" "}
+            <span className="font-mono">npm ci && npm run build:server && npm start</span>.
+            HTTPS — nginx из <span className="font-mono">deploy/nginx.conf</span>.
+          </p>
+        </section>
 
         <label
           onDragEnter={(e) => {

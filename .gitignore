@@ -7,6 +7,8 @@ dist/
 .env
 .env.*
 !.env.example
+.data/
+data/
 .grok/
 screenshots/
 artifacts/
@@ -15,4 +17,6 @@ artifacts/
 .node_modules.lock
 AGENTS.md
 AGENTS.project.md
-public/__grok/
+desktop/www/
+desktop/out/
+

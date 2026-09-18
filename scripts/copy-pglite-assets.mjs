@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = join(ROOT, "node_modules/@electric-sql/pglite/dist");
 const FILES = ["pglite.data", "pglite.wasm", "initdb.wasm"];
-const OUTPUT = join(ROOT, ".vercel/output");
+const OUTPUTS = [join(ROOT, ".vercel/output"), join(ROOT, ".output")];
 
 function walk(dir, acc = []) {
   if (!existsSync(dir)) return acc;
@@ -29,9 +29,9 @@ if (missing.length) {
   process.exit(0);
 }
 
-const bundles = walk(OUTPUT);
+const bundles = OUTPUTS.flatMap((dir) => walk(dir));
 if (bundles.length === 0) {
-  console.warn("[copy-pglite-assets] no bundled pglite module under .vercel/output");
+  console.warn("[copy-pglite-assets] no bundled pglite module under .vercel/output or .output");
   process.exit(0);
 }
 

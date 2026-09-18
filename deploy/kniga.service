@@ -1,0 +1,18 @@
+[Unit]
+Description=Книга
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/kniga
+Environment=VITE_AUTH_ENABLED=false
+Environment=HOST=0.0.0.0
+Environment=PORT=8080
+Environment=PGLITE_DATA_DIR=/var/lib/kniga
+ExecStart=/usr/bin/node scripts/start-prod.mjs
+Restart=on-failure
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target

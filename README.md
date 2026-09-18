@@ -23,6 +23,8 @@
 
 ## Запуск
 
+Локально:
+
 ```bash
 npm install
 npm run dev
@@ -37,6 +39,53 @@ npm run build
 ```
 
 Учётные записи выключены. Опубликованные книги пишутся в общую таблицу `published_books` (Postgres или встроенный PGLite). Черновики мастерской живут в браузере, не в каталоге.
+
+## На сервер (Ubuntu)
+
+Нужен Node 22 или Docker. Каталог без учёток: любой, у кого есть адрес, может читать и публиковать книги.
+
+### Docker
+
+```bash
+git clone https://github.com/niiu/kniga-web.git
+cd kniga-web
+docker compose up -d --build
+```
+
+Сайт: `http://IP:8080`. Другой порт снаружи:
+
+```bash
+PORT=3000 docker compose up -d --build
+```
+
+Или без compose: `docker build -t kniga . && docker run -d --name kniga -p 3000:8080 -v kniga-data:/data kniga`.
+
+Данные каталога — том `kniga-data`. Остановить: `docker compose down`. Обновить: `git pull && docker compose up -d --build`.
+
+### Без Docker
+
+```bash
+# Node 22
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs git
+git clone https://github.com/niiu/kniga-web.git /opt/kniga
+cd /opt/kniga
+npm ci
+npm run build:server
+sudo mkdir -p /var/lib/kniga
+sudo chown "$USER" /var/lib/kniga
+PGLITE_DATA_DIR=/var/lib/kniga PORT=8080 npm start
+```
+
+Чтобы крутилось после перезагрузки, скопируйте `deploy/kniga.service` в `/etc/systemd/system/` и выполните `systemctl enable --now kniga`.
+
+Перед nginx / HTTPS подставьте свой домен в `deploy/nginx.conf` и включите его в `sites-enabled`. Сертификат — certbot.
+
+### Postgres вместо файла
+
+Если каталог должен жить в отдельной базе, задайте `DATABASE_URL` (Postgres). Без этой переменной используется встроенный PGLite, данные — в `PGLITE_DATA_DIR`.
+
+Учётные записи не включайте: `VITE_AUTH_ENABLED=false` уже в сборке.
 
 ## Стек
 

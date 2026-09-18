@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -84,20 +84,6 @@ export function SceneEditor({ liveVariables, liveItems, onCopyToBuffer }: Props)
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const grouped = useMemo(() => {
-    if (!scene) return [] as Array<{ line: number; choices: Array<{ choice: Choice; index: number }> }>;
-    const map = new Map<number, Array<{ choice: Choice; index: number }>>();
-    scene.choices.forEach((choice, index) => {
-      const line = choice.npcLineIndex ?? 0;
-      const list = map.get(line) ?? [];
-      list.push({ choice, index });
-      map.set(line, list);
-    });
-    return [...map.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([line, choices]) => ({ line, choices }));
-  }, [scene]);
-
   if (!scene) {
     return (
       <div className="flex h-full items-center justify-center p-8 text-sm text-muted-foreground">
@@ -106,35 +92,89 @@ export function SceneEditor({ liveVariables, liveItems, onCopyToBuffer }: Props)
     );
   }
 
-  const shownId = idDraft ?? scene.id;
-  const idTaken = story.scenes.some((s) => s.id === shownId && s.id !== scene.id);
+  const current = scene;
+  const shownId = idDraft ?? current.id;
+  const idTaken = story.scenes.some((s) => s.id === shownId && s.id !== current.id);
 
   function patchScene(partial: Partial<Scene>) {
-    updateScene(scene!.id, (s) => ({ ...s, ...partial }));
+    updateScene(current.id, (s) => ({ ...s, ...partial }));
   }
 
   function addPlayerChoice(npcLineIndex: number) {
-    addChoice(scene!.id, {
+    addChoice(current.id, {
       text: "Новый ответ",
       next: "",
-      npcLineIndex: scene!.isDialogue ? npcLineIndex : undefined,
+      npcLineIndex: current.isDialogue ? npcLineIndex : undefined,
     });
     if (npcLineIndex === 0) setCollapsedStart(false);
   }
 
   function addNpcLine() {
-    const responses = scene!.npcResponses || [];
+    const responses = current.npcResponses || [];
     const prev = responses[responses.length - 1];
     const newResp = {
-      id: uid(`${scene!.id}-nr`),
+      id: uid(`${current.id}-nr`),
       text: "",
       condition: "",
-      npcName: prev?.npcName || scene!.npcName || "",
-      emotion: prev?.emotion || scene!.npcEmotion || "",
+      npcName: prev?.npcName || current.npcName || "",
+      emotion: prev?.emotion || current.npcEmotion || "",
     };
     patchScene({ npcResponses: [...responses, newResp] });
+    if (newResp.id) {
+      setCollapsedNpc((m) => {
+        const next = { ...m };
+        delete next[newResp.id!];
+        return next;
+      });
+    }
     if (newResp.npcName) addSuggestedNpcName(newResp.npcName);
     if (newResp.emotion) addSuggestedEmotion(newResp.emotion);
+    queueMicrotask(() => {
+      const areas = document.querySelectorAll<HTMLTextAreaElement>("textarea[data-npc-reply]");
+      const last = areas[areas.length - 1];
+      last?.focus();
+      last?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
+
+  function choicesForLine(line: number) {
+    return current.choices
+      .map((choice, index) => ({ choice, index }))
+      .filter(({ choice }) => (choice.npcLineIndex ?? 0) === line);
+  }
+
+  function renderChoiceCards(line: number) {
+    const list = choicesForLine(line);
+    return list.map(({ choice, index }, gi) => (
+      <ChoiceCard
+        key={choice.id || `c-${index}`}
+        choice={choice}
+        index={index}
+        scene={current}
+        sceneIds={sceneIds}
+        vars={vars}
+        items={items}
+        suggestedVariables={story.suggestedVariables}
+        suggestedItems={story.suggestedItems}
+        rollOpen={!!rollOpen[choice.id || String(index)]}
+        onToggleRoll={() =>
+          setRollOpen((m) => {
+            const k = choice.id || String(index);
+            return { ...m, [k]: !m[k] };
+          })
+        }
+        onChange={(updater) => updateChoice(current.id, index, updater)}
+        onRemove={() => removeChoice(current.id, index)}
+        onDuplicate={() => duplicateChoice(current.id, index)}
+        onCopy={() => onCopyToBuffer(choice)}
+        onMoveUp={() => moveChoice(current.id, index, index - 1)}
+        onMoveDown={() => moveChoice(current.id, index, index + 1)}
+        canUp={gi > 0}
+        canDown={gi < list.length - 1}
+        addSuggestedVariable={addSuggestedVariable}
+        addSuggestedItem={addSuggestedItem}
+      />
+    ));
   }
 
   return (
@@ -238,116 +278,101 @@ export function SceneEditor({ liveVariables, liveItems, onCopyToBuffer }: Props)
         </button>
       ) : null}
 
-      {grouped.map((group) => {
-        if (group.line === 0 && scene.isDialogue && collapsedStart) return null;
-        const npc = group.line > 0 ? scene.npcResponses?.[group.line - 1] : null;
-        const npcKey = npc?.id || `idx-${group.line}`;
-        const npcCollapsed = !!collapsedNpc[npcKey];
-        return (
-          <div key={group.line} className="space-y-2">
-            {npc ? (
-              <div className="rounded-lg border border-border bg-card p-3">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    className="flex items-center gap-1 text-xs font-medium"
-                    onClick={() => setCollapsedNpc((m) => ({ ...m, [npcKey]: !m[npcKey] }))}
-                  >
-                    {npcCollapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}
-                    Реплика NPC {group.line}
-                  </button>
-                  <button
-                    type="button"
-                    className="size-8 text-destructive"
-                    onClick={() => removeNpcResponse(scene.id, group.line - 1)}
-                    aria-label="Удалить реплику"
-                  >
-                    <Trash2 className="mx-auto size-4" />
-                  </button>
-                </div>
-                {npcCollapsed ? null : (
-                  <div className="space-y-2">
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <Input
-                        list="npc-names"
-                        placeholder="Имя"
-                        value={npc.npcName || ""}
-                        onChange={(e) => {
-                          const next = [...(scene.npcResponses || [])];
-                          next[group.line - 1] = { ...npc, npcName: e.target.value };
-                          patchScene({ npcResponses: next });
-                        }}
-                      />
-                      <Input
-                        list="npc-emotions"
-                        placeholder="Эмоция"
-                        value={npc.emotion || ""}
-                        onChange={(e) => {
-                          const next = [...(scene.npcResponses || [])];
-                          next[group.line - 1] = { ...npc, emotion: e.target.value };
-                          patchScene({ npcResponses: next });
-                        }}
-                      />
-                    </div>
-                    <Textarea
-                      placeholder="Текст реплики"
-                      value={npc.text}
-                      onChange={(e) => {
-                        const next = [...(scene.npcResponses || [])];
-                        next[group.line - 1] = { ...npc, text: e.target.value };
-                        patchScene({ npcResponses: next });
-                      }}
-                    />
-                    <Input
-                      placeholder="Условие показа"
-                      value={npc.condition || ""}
-                      onChange={(e) => {
-                        const next = [...(scene.npcResponses || [])];
-                        next[group.line - 1] = { ...npc, condition: e.target.value };
-                        patchScene({ npcResponses: next });
-                      }}
-                    />
-                    <Button size="sm" variant="outline" onClick={() => addPlayerChoice(group.line)}>
-                      <Plus className="size-4" />
-                      Ответ на эту реплику
-                    </Button>
+      {scene.isDialogue ? (collapsedStart ? null : <div className="space-y-2">{renderChoiceCards(0)}</div>) : (
+        <div className="space-y-2">{renderChoiceCards(0)}</div>
+      )}
+
+      {scene.isDialogue
+        ? (scene.npcResponses || []).map((npc, j) => {
+            const line = j + 1;
+            const npcKey = npc.id || `idx-${line}`;
+            const npcCollapsed = !!collapsedNpc[npcKey];
+            return (
+              <div key={npcKey} className="space-y-2">
+                <div className="rounded-lg border border-border bg-card p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-xs font-medium"
+                      onClick={() => setCollapsedNpc((m) => ({ ...m, [npcKey]: !m[npcKey] }))}
+                    >
+                      {npcCollapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                      Реплика NPC {line}
+                    </button>
+                    <button
+                      type="button"
+                      className="size-8 text-destructive"
+                      onClick={() => removeNpcResponse(scene.id, j)}
+                      aria-label="Удалить реплику"
+                    >
+                      <Trash2 className="mx-auto size-4" />
+                    </button>
                   </div>
-                )}
+                  {npcCollapsed ? (
+                    <p className="truncate text-sm text-muted-foreground">
+                      <span className="font-medium text-ink">
+                        {npc.npcName || scene.npcName || "НПС"}
+                        {npc.emotion ? ` (${npc.emotion})` : ""}:
+                      </span>{" "}
+                      {npc.text || "пустая реплика"}
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <Input
+                          list="npc-names"
+                          placeholder="Имя"
+                          value={npc.npcName || ""}
+                          onChange={(e) => {
+                            const next = [...(scene.npcResponses || [])];
+                            next[j] = { ...npc, npcName: e.target.value };
+                            patchScene({ npcResponses: next });
+                            if (e.target.value) addSuggestedNpcName(e.target.value);
+                          }}
+                        />
+                        <Input
+                          list="npc-emotions"
+                          placeholder="Эмоция"
+                          value={npc.emotion || ""}
+                          onChange={(e) => {
+                            const next = [...(scene.npcResponses || [])];
+                            next[j] = { ...npc, emotion: e.target.value };
+                            patchScene({ npcResponses: next });
+                            if (e.target.value) addSuggestedEmotion(e.target.value);
+                          }}
+                        />
+                      </div>
+                      <Textarea
+                        data-npc-reply=""
+                        placeholder="Текст реплики НПС"
+                        value={npc.text}
+                        onChange={(e) => {
+                          const next = [...(scene.npcResponses || [])];
+                          next[j] = { ...npc, text: e.target.value };
+                          patchScene({ npcResponses: next });
+                        }}
+                      />
+                      <Input
+                        placeholder="Условие показа"
+                        value={npc.condition || ""}
+                        onChange={(e) => {
+                          const next = [...(scene.npcResponses || [])];
+                          next[j] = { ...npc, condition: e.target.value };
+                          patchScene({ npcResponses: next });
+                        }}
+                      />
+                      <Button size="sm" variant="outline" onClick={() => addPlayerChoice(line)}>
+                        <Plus className="size-4" />
+                        Ответ на эту реплику
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                {npcCollapsed ? null : renderChoiceCards(line)}
               </div>
-            ) : null}
-            {group.choices.map(({ choice, index }, gi) => (
-              <ChoiceCard
-                key={choice.id || index}
-                choice={choice}
-                index={index}
-                scene={scene}
-                sceneIds={sceneIds}
-                vars={vars}
-                items={items}
-                suggestedVariables={story.suggestedVariables}
-                suggestedItems={story.suggestedItems}
-                rollOpen={!!rollOpen[choice.id || String(index)]}
-                onToggleRoll={() =>
-                  setRollOpen((m) => {
-                    const k = choice.id || String(index);
-                    return { ...m, [k]: !m[k] };
-                  })
-                }
-                onChange={(updater) => updateChoice(scene.id, index, updater)}
-                onRemove={() => removeChoice(scene.id, index)}
-                onDuplicate={() => duplicateChoice(scene.id, index)}
-                onCopy={() => onCopyToBuffer(choice)}
-                onMoveUp={() => moveChoice(scene.id, index, index - 1)}
-                onMoveDown={() => moveChoice(scene.id, index, index + 1)}
-                canUp={gi > 0}
-                canDown={gi < group.choices.length - 1}
-                addSuggestedVariable={addSuggestedVariable}
-                addSuggestedItem={addSuggestedItem}
-              />
-            ))}
-          </div>
-        );
-      })}
+            );
+          })
+        : null}
 
       <datalist id="npc-names">
         {(story.suggestedNpcNames || []).map((n) => (

@@ -103,11 +103,11 @@ export function CatalogHome({ books: initial }: Props) {
           <pre className="mt-3 overflow-x-auto rounded-lg bg-muted p-4 text-xs leading-relaxed text-ink">
             {`git clone https://github.com/niiu/kniga-web.git
 cd kniga-web
-docker compose up -d --build
-PORT=3000 docker compose up -d --build`}
+./deploy.sh
+PORT=3000 ./deploy.sh`}
           </pre>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-            Без PORT сайт на 8080. С <span className="font-mono">PORT=3000</span> — на 3000.
+            Без PORT сайт на 8080. С <span className="font-mono">PORT=3000 ./deploy.sh</span> — на 3000.
             Каталог сохраняется в томе Docker. Репозиторий открытый:
             {" "}
             <a className="text-accent hover:underline" href="https://github.com/niiu/kniga-web">

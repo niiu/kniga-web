@@ -49,18 +49,18 @@ npm run build
 ```bash
 git clone https://github.com/niiu/kniga-web.git
 cd kniga-web
-docker compose up -d --build
+./deploy.sh
 ```
 
-Сайт: `http://IP:8080`. Другой порт снаружи:
+Сайт: `http://IP:8080`. Другой порт:
 
 ```bash
-PORT=3000 docker compose up -d --build
+PORT=3000 ./deploy.sh
 ```
 
-Или без compose: `docker build -t kniga . && docker run -d --name kniga -p 3000:8080 -v kniga-data:/data kniga`.
+Скрипт сам выбирает `docker compose`, `docker-compose` или обычный `docker run`. Не используйте `docker -d` — короткий флаг `-d` у самого `docker` не существует.
 
-Данные каталога — том `kniga-data`. Остановить: `docker compose down`. Обновить: `git pull && docker compose up -d --build`.
+Остановить: `docker compose down` (или `docker rm -f kniga`). Обновить: `git pull && ./deploy.sh`.
 
 ### Без Docker
 

@@ -1,6 +1,7 @@
-# Порт снаружи задаётся в команде, внутри контейнер всегда слушает 8080:
-#   PORT=3000 docker compose up -d --build
-#   docker run --rm -p 3000:8080 kniga-web-kniga
+# Порт снаружи:
+#   ./deploy.sh
+#   PORT=3000 ./deploy.sh
+version: "3.8"
 services:
   kniga:
     build: .
@@ -12,8 +13,6 @@ services:
       PORT: "8080"
       NITRO_PORT: "8080"
       PGLITE_DATA_DIR: /data/pglite
-      # Чтобы каталог жил в Postgres, раскомментируйте и задайте URL:
-      # DATABASE_URL: postgres://kniga:kniga@db:5432/kniga
     volumes:
       - kniga-data:/data
     restart: unless-stopped

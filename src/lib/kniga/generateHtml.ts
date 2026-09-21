@@ -317,40 +317,49 @@ export function generateFullStandaloneHtml(story: Story): string {
       alert('✅ Загружено автосохранение');
     }
 
-    function render() {
-      let scene = story.scenes.find(s => s.id === currentId);
-      if (!scene && story.scenes?.length > 0) {
-        scene = story.scenes[0];
-        currentId = scene.id;
-      }
-      if (!scene) return showEnding();
+    function sceneById(id) {
+      return (story.scenes || []).find(s => s.id === id) || null;
+    }
 
-      // В диалоге используем историю диалога (вопрос + ответы), иначе обычный текст
-      let displayText = scene.text;
+    function isEndId(id) {
+      return !id || id === 'end' || !sceneById(id);
+    }
+
+    function render() {
+      if (isEndId(currentId)) {
+        const leftover = dialogueHistory
+          ? processDisplayText(dialogueHistory, { variables: vars, items: items }, story.characterName)
+          : '';
+        paintScreen({ ended: true, displayText: leftover, visibleChoices: [] });
+        return;
+      }
+      const scene = sceneById(currentId);
+
+      let displayText = scene.text || '';
       if (scene.isDialogue && dialogueHistory) {
         displayText = dialogueHistory;
       }
 
-      // Применяем inline-эффекты из текста сцены (addItem/removeItem в описании)
-      // Для диалога НЕ применяем ко всей накопленной истории (displayText), иначе при загрузке
-      // из сохранения вся история репарсится и инлайновые эффекты применяются повторно,
-      // что ломает conditional реплики и приводит к преждевременному ендгейму.
-      let inlineSource = scene.text;
-      if (scene.isDialogue && dialogueHistory) {
-        inlineSource = scene.text; // только текущий "живой" текст сцены
-      }
-      const stateAfterInline = applyInlineSceneEffects(inlineSource, { variables: vars, items: items });
+      const stateAfterInline = applyInlineSceneEffects(scene.text, { variables: vars, items: items });
       vars = stateAfterInline.variables;
       items = stateAfterInline.items;
 
       const currentStateForFilter = { variables: vars, items: items };
-      const visibleChoices = scene.choices.filter(choice => {
+      const visibleChoices = (scene.choices || []).filter(choice => {
         const condOk = evaluateCondition(choice.condition, currentStateForFilter);
         if (!scene.isDialogue) return condOk;
         const step = choice.npcLineIndex || 0;
         return condOk && step === currentDialogueStep;
       });
 
+      paintScreen({
+        ended: visibleChoices.length === 0,
+        displayText: processDisplayText(displayText, { variables: vars, items: items }, story.characterName),
+        visibleChoices,
+      });
+    }
+
+    function paintScreen({ ended, displayText, visibleChoices }) {
       let html = \`
         <h1 class="text-4xl mb-8 text-amber-300 font-bold text-center">\${story.title}</h1>
 
@@ -366,7 +375,7 @@ export function generateFullStandaloneHtml(story: Story): string {
 
         <!-- Инвентарь -->
         <div class="bg-zinc-900/80 p-4 rounded-2xl mb-8">
-          <div class="text-xs opacity-60 uppercase mb-2">🎒 Инвентарь</div>
+          <div class="text-xs opacity-60 uppercase mb-2">Инвентарь</div>
           <div class="flex flex-wrap gap-x-8 gap-y-2">
             \${Object.entries(items).filter(([name, count]) => count !== 0).map(([name, count]) => \`
               <div class="text-center">
@@ -376,19 +385,21 @@ export function generateFullStandaloneHtml(story: Story): string {
             \`).join('')}
           </div>
         </div>
-
-        <!-- Текст сцены / История диалога -->
-        <div class="bg-zinc-900 p-12 rounded-3xl shadow-2xl border border-zinc-700 min-h-[45vh] font-serif text-xl leading-relaxed flex-1 whitespace-pre-wrap">
-          \${processDisplayText(displayText, { variables: vars, items: items }, story.characterName)}
-        </div>
       \`;
 
-      if (visibleChoices.length === 0) {
+      if (displayText) {
+        html += \`
+        <div class="bg-zinc-900 p-12 rounded-3xl shadow-2xl border border-zinc-700 min-h-[45vh] font-serif text-xl leading-relaxed flex-1 whitespace-pre-wrap">
+          \${displayText}
+        </div>
+        \`;
+      }
+
+      if (ended) {
         html += \`
           <div class="mt-10 text-center py-12">
-            <div class="text-[120px] mb-6">🏁</div>
             <h2 class="text-5xl font-bold mb-4 text-amber-300">Конец истории</h2>
-            <p class="text-2xl text-zinc-400 max-w-md mx-auto">Ты дошёл до финала этой ветки.<br>Спасибо за игру!</p>
+            <p class="text-2xl text-zinc-400 max-w-md mx-auto">Эта ветка закончилась.<br>Спасибо за чтение.</p>
             <button onclick="restartGame()" class="mt-8 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 px-16 py-6 rounded-3xl text-2xl font-medium transition-all active:scale-95">Начать историю заново</button>
           </div>
         \`;
@@ -417,7 +428,7 @@ export function generateFullStandaloneHtml(story: Story): string {
 
       document.getElementById('game').innerHTML = html;
 
-      if (visibleChoices.length > 0) renderChoices(visibleChoices);
+      if (!ended && visibleChoices.length > 0) renderChoices(visibleChoices);
       renderSlots();
       renderAutoSaveInfo();
     }
@@ -475,25 +486,25 @@ export function generateFullStandaloneHtml(story: Story): string {
 
     function makeChoice(choice) {
       const stateBefore = { variables: {...vars}, items: {...items} };
-
-      let effectsToApply = choice.effects;
-      let nextId = choice.next || '';
-      let rollValue;
-      let tierLabel = '';
-
       const currentScene = story.scenes.find(s => s.id === currentId);
       const isDialogue = !!currentScene?.isDialogue;
 
+      let effectsToApply = choice.effects;
+      let nextId = getDialogueAwareNext(choice, currentId, isDialogue);
+      let rollValue;
+      let tierLabel = '';
+
       if (choice.roll) {
-        // Используем новую многоуровневую логику (если rollTiers заданы) + legacy
         const outcome = evaluateRollOutcome(choice, vars);
         effectsToApply = outcome.effects;
         nextId = outcome.nextId;
         rollValue = outcome.rollValue;
         if (outcome.tier != null) tierLabel = ' (' + outcome.tier + '%)';
+        if (isDialogue && (!nextId || nextId === 'end') && !choice.next) {
+          nextId = currentId;
+        }
       }
 
-      // Диалоговый режим: если next не указан — остаёмся в текущей сцене
       if (isDialogue && !nextId) {
         nextId = currentId;
       }
@@ -532,16 +543,19 @@ export function generateFullStandaloneHtml(story: Story): string {
 
       if (nextId && nextId !== currentId) {
         currentId = nextId;
+        if (!isEndId(currentId)) {
+          dialogueHistory = '';
+          currentDialogueStep = 0;
+        }
+      } else if (!nextId) {
+        currentId = 'end';
       }
       autoSave();
-      if (currentId === 'end' || !story.scenes.some(s => s.id === currentId)) {
-        showEnding();
-      } else {
-        render();
-      }
+      render();
     }
 
     function showEnding() {
+      currentId = 'end';
       render();
     }
 

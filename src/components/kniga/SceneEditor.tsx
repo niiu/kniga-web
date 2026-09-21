@@ -432,6 +432,8 @@ function ChoiceCard({
   addSuggestedItem: (n: string) => void;
 }) {
   const condError = choice.condition?.trim() && !isConditionValid(choice.condition, vars, items);
+  const [tagName, setTagName] = useState("");
+  const [tagIsItem, setTagIsItem] = useState(false);
 
   function appendCond(piece: string) {
     const current = (choice.condition || "").trimEnd();
@@ -447,6 +449,19 @@ function ChoiceCard({
     if (next && !next.endsWith(",")) next += ",";
     next += piece;
     onChange((c) => ({ ...c, effects: next }));
+  }
+
+  function addPoolTag() {
+    const name = tagName.trim().replace(/[,:]/g, "");
+    if (!name) return;
+    if (tagIsItem) {
+      addSuggestedItem(name);
+      appendEffect(`addItem:${name}:1`);
+    } else {
+      addSuggestedVariable(name);
+      appendEffect(`${name}:`);
+    }
+    setTagName("");
   }
 
   function ensureTiers(): NonNullable<Choice["rollTiers"]> {
@@ -600,6 +615,32 @@ function ChoiceCard({
               +{k}
             </button>
           ))}
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Input
+            className="h-9 min-w-0 flex-1 font-mono text-sm"
+            placeholder={tagIsItem ? "Новый предмет" : "Новая характеристика"}
+            value={tagName}
+            onChange={(e) => setTagName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addPoolTag();
+              }
+            }}
+          />
+          <label className="flex h-9 shrink-0 items-center gap-1.5 text-xs">
+            <input
+              type="checkbox"
+              checked={tagIsItem}
+              onChange={(e) => setTagIsItem(e.target.checked)}
+            />
+            Предмет
+          </label>
+          <Button type="button" size="sm" variant="outline" onClick={addPoolTag}>
+            <Plus className="size-3.5" />
+            Добавить
+          </Button>
         </div>
       </div>
       {choice.roll ? (

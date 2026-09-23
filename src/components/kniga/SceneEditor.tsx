@@ -434,6 +434,7 @@ function ChoiceCard({
   const condError = choice.condition?.trim() && !isConditionValid(choice.condition, vars, items);
   const [tagName, setTagName] = useState("");
   const [tagIsItem, setTagIsItem] = useState(false);
+  const [tiersOpen, setTiersOpen] = useState(false);
 
   function appendCond(piece: string) {
     const current = (choice.condition || "").trimEnd();
@@ -524,6 +525,13 @@ function ChoiceCard({
             className="mt-1 font-mono"
             placeholder="1d20+strength"
             value={choice.roll || ""}
+            onClick={() => setTiersOpen(true)}
+            onFocus={() => {
+              setTiersOpen(true);
+              if (choice.roll && !choice.rollTiers) {
+                onChange((c) => ({ ...c, rollTiers: ensureTiers() }));
+              }
+            }}
             onChange={(e) =>
               onChange((c) => {
                 const roll = e.target.value;
@@ -531,14 +539,70 @@ function ChoiceCard({
                 return { ...c, roll };
               })
             }
-            onFocus={() => {
-              if (choice.roll && !choice.rollTiers) {
-                onChange((c) => ({ ...c, rollTiers: ensureTiers() }));
-              }
-            }}
           />
         </div>
       </div>
+      {tiersOpen ? (
+        <div className="mt-2 space-y-2">
+          <p className="text-xs text-muted-foreground">
+            {choice.roll?.trim()
+              ? `Пороги от максимума броска (${getDiceMax(choice.roll, vars)}). Пустая сцена — как у ответа.`
+              : "Пороги броска. Сначала задайте формулу, чтобы увидеть числа на кубике."}
+          </p>
+          {TIER_KEYS.map((pct) => {
+            const tier = (choice.rollTiers ?? ensureTiers())[pct];
+            return (
+              <div key={pct} className="grid gap-2 rounded-md bg-muted/60 p-2 sm:grid-cols-[8.5rem_1fr_1fr]">
+                <div className="self-center">
+                  <Badge className="h-8 w-full justify-center">{TIER_LABELS[pct]}</Badge>
+                  <div className="mt-1 text-center font-mono text-[10px] text-ink-subtle">
+                    {tierRangeLabel(choice.roll || "", pct, vars)}
+                  </div>
+                </div>
+                <select
+                  className="h-9 rounded-sm border border-border bg-card px-2 text-xs"
+                  value={tier?.next || ""}
+                  aria-label={`Сцена порога ${pct}`}
+                  onChange={(e) =>
+                    onChange((c) => ({
+                      ...c,
+                      rollTiers: {
+                        ...ensureTiers(),
+                        ...c.rollTiers,
+                        [pct]: { ...(c.rollTiers?.[pct] || {}), next: e.target.value },
+                      },
+                    }))
+                  }
+                >
+                  <option value="">(как у ответа)</option>
+                  <option value="end">end</option>
+                  {sceneIds.map((id) => (
+                    <option key={id} value={id}>
+                      {id}
+                    </option>
+                  ))}
+                </select>
+                <Input
+                  className="h-9 font-mono text-xs"
+                  placeholder="эффекты порога"
+                  aria-label={`Эффекты порога ${pct}`}
+                  value={tier?.effects || ""}
+                  onChange={(e) =>
+                    onChange((c) => ({
+                      ...c,
+                      rollTiers: {
+                        ...ensureTiers(),
+                        ...c.rollTiers,
+                        [pct]: { ...(c.rollTiers?.[pct] || {}), effects: e.target.value },
+                      },
+                    }))
+                  }
+                />
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
       <div className="mt-2">
         <Label>Условие</Label>
         <Input
@@ -643,65 +707,6 @@ function ChoiceCard({
           </Button>
         </div>
       </div>
-      {choice.roll?.trim() ? (
-        <div className="mt-3 space-y-2 border-t border-border pt-3">
-          <p className="text-xs text-muted-foreground">
-            Пороги от максимума броска ({getDiceMax(choice.roll, vars)}). Пустая сцена — как у ответа.
-          </p>
-          {TIER_KEYS.map((pct) => {
-            const tier = (choice.rollTiers ?? ensureTiers())[pct];
-            return (
-              <div key={pct} className="grid gap-2 rounded-md bg-muted/60 p-2 sm:grid-cols-[8.5rem_1fr_1fr]">
-                <div className="self-center">
-                  <Badge className="h-8 w-full justify-center">{TIER_LABELS[pct]}</Badge>
-                  <div className="mt-1 text-center font-mono text-[10px] text-ink-subtle">
-                    {tierRangeLabel(choice.roll || "", pct, vars)}
-                  </div>
-                </div>
-                <select
-                  className="h-9 rounded-sm border border-border bg-card px-2 text-xs"
-                  value={tier?.next || ""}
-                  aria-label={`Сцена порога ${pct}`}
-                  onChange={(e) =>
-                    onChange((c) => ({
-                      ...c,
-                      rollTiers: {
-                        ...ensureTiers(),
-                        ...c.rollTiers,
-                        [pct]: { ...(c.rollTiers?.[pct] || {}), next: e.target.value },
-                      },
-                    }))
-                  }
-                >
-                  <option value="">(как у ответа)</option>
-                  <option value="end">end</option>
-                  {sceneIds.map((id) => (
-                    <option key={id} value={id}>
-                      {id}
-                    </option>
-                  ))}
-                </select>
-                <Input
-                  className="h-9 font-mono text-xs"
-                  placeholder="эффекты порога"
-                  aria-label={`Эффекты порога ${pct}`}
-                  value={tier?.effects || ""}
-                  onChange={(e) =>
-                    onChange((c) => ({
-                      ...c,
-                      rollTiers: {
-                        ...ensureTiers(),
-                        ...c.rollTiers,
-                        [pct]: { ...(c.rollTiers?.[pct] || {}), effects: e.target.value },
-                      },
-                    }))
-                  }
-                />
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
     </article>
   );
 }

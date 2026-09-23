@@ -320,6 +320,32 @@ function getTargetForPercent(diceNotation, vars, percent) {
   return Math.max(1, Math.ceil(max * (percent / 100)));
 }
 
+function resolveRollTierKey(rollValue, max) {
+  const percentile = max > 0 ? (Number(rollValue) / max) * 100 : 0;
+  const tierBands = [
+    { key: '100', min: 95 },
+    { key: '85', min: 85 },
+    { key: '50', min: 50 },
+    { key: '25', min: 25 },
+    { key: '0', min: 0 },
+  ];
+  for (const band of tierBands) {
+    if (percentile >= band.min) return band.key;
+  }
+  return '0';
+}
+
+function tierPayload(choice, tierKey) {
+  const stored = choice.rollTiers && choice.rollTiers[tierKey] ? choice.rollTiers[tierKey] : {};
+  const next = stored.next && String(stored.next).trim() ? String(stored.next).trim() : (choice.next || '');
+  const effects = stored.effects && String(stored.effects).trim() ? String(stored.effects).trim() : choice.effects;
+  return {
+    tier: parseInt(tierKey, 10),
+    nextId: next,
+    effects: effects || undefined,
+  };
+}
+
 function evaluateRollOutcome(choice, vars, forceTier = null) {
   if (!choice.roll) {
     return {
@@ -329,11 +355,7 @@ function evaluateRollOutcome(choice, vars, forceTier = null) {
     };
   }
 
-  // Support forced tier for testing in preview (bypasses random roll)
-  if (forceTier != null && choice.rollTiers) {
-    const tierKey = String(forceTier);
-    const tierData = choice.rollTiers[tierKey] || {};
-    // Compute a plausible fake roll value that would land in this tier
+  if (forceTier != null) {
     const max = getDiceMax(choice.roll, vars);
     let fakePercent = 50;
     if (forceTier === 0) fakePercent = 12;
@@ -342,80 +364,18 @@ function evaluateRollOutcome(choice, vars, forceTier = null) {
     else if (forceTier === 85) fakePercent = 92;
     else if (forceTier === 100) fakePercent = 98;
     const fakeRoll = max > 0 ? Math.floor((max * fakePercent) / 100) : 0;
-
     return {
       rollValue: fakeRoll,
-      tier: forceTier,
-      nextId: tierData.next || choice.next || '',
-      effects: tierData.effects || choice.effects,
+      ...tierPayload(choice, String(forceTier)),
     };
   }
 
   const rollValue = rollDice(choice.roll, vars);
-
-  if (!choice.rollTiers) {
-    // roll без rollTiers — только для отображения в алерте, переход по next
-    return {
-      rollValue,
-      nextId: choice.next || '',
-      effects: choice.effects,
-    };
-  }
-
-  // Новая система многоуровневых порогов (диапазоны успеха от макса броска)
-  // - 0% <= roll < 25% от макса → тир "0"
-  // - 25% <= roll < 50% от макса → тир "25%"
-  // - и т.д. до 100% (крит)
-  const tierBands = [
-    { key: '100', min: 95 },
-    { key: '85', min: 85 },
-    { key: '50', min: 50 },
-    { key: '25', min: 25 },
-    { key: '0', min: 0 },
-  ];
-  let achievedTier;
-  let tierNext;
-  let tierEffects;
-
   const max = getDiceMax(choice.roll, vars);
-  const percentile = max > 0 ? (rollValue / max) * 100 : 0;
-
-  let candidateKey;
-  for (const band of tierBands) {
-    if (percentile >= band.min) {
-      candidateKey = band.key;
-      break;
-    }
-  }
-
-  if (candidateKey) {
-    const tierData = choice.rollTiers[candidateKey];
-    if (tierData && ((tierData.next && tierData.next.trim()) || (tierData.effects && tierData.effects.trim()))) {
-      achievedTier = parseInt(candidateKey);
-      tierNext = tierData.next;
-      tierEffects = tierData.effects;
-    }
-  }
-
-  let finalNext;
-  if (achievedTier != null) {
-    finalNext = tierNext || choice.next || 'end';
-  } else {
-    finalNext = choice.next || 'end';
-  }
-
-  let finalEffects;
-  if (tierEffects && tierEffects.trim()) {
-    finalEffects = tierEffects;
-  } else {
-    finalEffects = choice.effects;
-  }
-
+  const tierKey = resolveRollTierKey(rollValue, max);
   return {
     rollValue,
-    tier: achievedTier,
-    nextId: finalNext,
-    effects: finalEffects || undefined,
+    ...tierPayload(choice, tierKey),
   };
 }
 
@@ -439,6 +399,7 @@ export {
   getDiceMax,
   getTargetForPercent,
   evaluateRollOutcome,
+  resolveRollTierKey,
   getNextDialogueStep,
   getDialogueNpcNameForStep,
   formatDialogueLine,

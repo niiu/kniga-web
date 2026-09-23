@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useStoryStore } from "@/lib/kniga/storyStore.ts";
-import { isConditionValid } from "@/lib/kniga/gameEngine.ts";
+import { isConditionValid, getDiceMax, getTargetForPercent } from "@/lib/kniga/gameEngine.ts";
 import type { Choice, Scene } from "@/lib/kniga/types.ts";
 import { cn, uid } from "@/lib/utils.ts";
 
@@ -29,6 +29,18 @@ const TIER_LABELS: Record<TierKey, string> = {
   "85": "85%",
   "100": "100% крит",
 };
+
+const TIER_FROM: Record<TierKey, number> = { "0": 0, "25": 25, "50": 50, "85": 85, "100": 95 };
+const TIER_UNTIL: Record<TierKey, number | null> = { "0": 25, "25": 50, "50": 85, "85": 95, "100": null };
+
+function tierRangeLabel(roll: string, pct: TierKey, vars: Record<string, number>): string {
+  const max = getDiceMax(roll, vars);
+  if (!roll.trim() || max <= 0) return "";
+  if (pct === "100") return `≥ ${getTargetForPercent(roll, vars, 95)}`;
+  const from = pct === "0" ? 1 : getTargetForPercent(roll, vars, TIER_FROM[pct]);
+  const until = getTargetForPercent(roll, vars, TIER_UNTIL[pct] ?? 100) - 1;
+  return `${from}–${Math.max(from, until)}`;
+}
 
 const OPS = [">", ">=", "<", "<=", "==", "and", "or", "not", "("];
 
@@ -57,7 +69,6 @@ export function SceneEditor({ liveVariables, liveItems, onCopyToBuffer }: Props)
 
   const scene = story.scenes.find((s) => s.id === currentSceneId) ?? null;
   const [idDraft, setIdDraft] = useState<string | null>(null);
-  const [rollOpen, setRollOpen] = useState<Record<string, boolean>>({});
   const [collapsedStart, setCollapsedStart] = useState(false);
   const [collapsedNpc, setCollapsedNpc] = useState<Record<string, boolean>>({});
 
@@ -156,13 +167,6 @@ export function SceneEditor({ liveVariables, liveItems, onCopyToBuffer }: Props)
         items={items}
         suggestedVariables={story.suggestedVariables}
         suggestedItems={story.suggestedItems}
-        rollOpen={!!rollOpen[choice.id || String(index)]}
-        onToggleRoll={() =>
-          setRollOpen((m) => {
-            const k = choice.id || String(index);
-            return { ...m, [k]: !m[k] };
-          })
-        }
         onChange={(updater) => updateChoice(current.id, index, updater)}
         onRemove={() => removeChoice(current.id, index)}
         onDuplicate={() => duplicateChoice(current.id, index)}
@@ -397,8 +401,6 @@ function ChoiceCard({
   items,
   suggestedVariables,
   suggestedItems,
-  rollOpen,
-  onToggleRoll,
   onChange,
   onRemove,
   onDuplicate,
@@ -418,8 +420,6 @@ function ChoiceCard({
   items: Record<string, number>;
   suggestedVariables: string[];
   suggestedItems: string[];
-  rollOpen: boolean;
-  onToggleRoll: () => void;
   onChange: (updater: (c: Choice) => Choice) => void;
   onRemove: () => void;
   onDuplicate: () => void;
@@ -643,61 +643,63 @@ function ChoiceCard({
           </Button>
         </div>
       </div>
-      {choice.roll ? (
-        <div className="mt-3 border-t border-border pt-2">
-          <button type="button" className="flex items-center gap-1 text-xs font-medium" onClick={onToggleRoll}>
-            {rollOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
-            Пороги броска
-          </button>
-          {rollOpen ? (
-            <div className="mt-2 space-y-2">
-              {TIER_KEYS.map((pct) => {
-                const tier = (choice.rollTiers ?? ensureTiers())[pct];
-                return (
-                  <div key={pct} className="grid gap-2 rounded-md bg-muted/60 p-2 sm:grid-cols-[7rem_1fr_1fr]">
-                    <Badge className="h-8 justify-center self-center">{TIER_LABELS[pct]}</Badge>
-                    <select
-                      className="h-9 rounded-sm border border-border bg-card px-2 text-xs"
-                      value={tier?.next || ""}
-                      onChange={(e) =>
-                        onChange((c) => ({
-                          ...c,
-                          rollTiers: {
-                            ...ensureTiers(),
-                            ...c.rollTiers,
-                            [pct]: { ...(c.rollTiers?.[pct] || {}), next: e.target.value },
-                          },
-                        }))
-                      }
-                    >
-                      <option value="">(как у ответа)</option>
-                      <option value="end">end</option>
-                      {sceneIds.map((id) => (
-                        <option key={id} value={id}>
-                          {id}
-                        </option>
-                      ))}
-                    </select>
-                    <Input
-                      className="h-9 font-mono text-xs"
-                      placeholder="эффекты тира"
-                      value={tier?.effects || ""}
-                      onChange={(e) =>
-                        onChange((c) => ({
-                          ...c,
-                          rollTiers: {
-                            ...ensureTiers(),
-                            ...c.rollTiers,
-                            [pct]: { ...(c.rollTiers?.[pct] || {}), effects: e.target.value },
-                          },
-                        }))
-                      }
-                    />
+      {choice.roll?.trim() ? (
+        <div className="mt-3 space-y-2 border-t border-border pt-3">
+          <p className="text-xs text-muted-foreground">
+            Пороги от максимума броска ({getDiceMax(choice.roll, vars)}). Пустая сцена — как у ответа.
+          </p>
+          {TIER_KEYS.map((pct) => {
+            const tier = (choice.rollTiers ?? ensureTiers())[pct];
+            return (
+              <div key={pct} className="grid gap-2 rounded-md bg-muted/60 p-2 sm:grid-cols-[8.5rem_1fr_1fr]">
+                <div className="self-center">
+                  <Badge className="h-8 w-full justify-center">{TIER_LABELS[pct]}</Badge>
+                  <div className="mt-1 text-center font-mono text-[10px] text-ink-subtle">
+                    {tierRangeLabel(choice.roll || "", pct, vars)}
                   </div>
-                );
-              })}
-            </div>
-          ) : null}
+                </div>
+                <select
+                  className="h-9 rounded-sm border border-border bg-card px-2 text-xs"
+                  value={tier?.next || ""}
+                  aria-label={`Сцена порога ${pct}`}
+                  onChange={(e) =>
+                    onChange((c) => ({
+                      ...c,
+                      rollTiers: {
+                        ...ensureTiers(),
+                        ...c.rollTiers,
+                        [pct]: { ...(c.rollTiers?.[pct] || {}), next: e.target.value },
+                      },
+                    }))
+                  }
+                >
+                  <option value="">(как у ответа)</option>
+                  <option value="end">end</option>
+                  {sceneIds.map((id) => (
+                    <option key={id} value={id}>
+                      {id}
+                    </option>
+                  ))}
+                </select>
+                <Input
+                  className="h-9 font-mono text-xs"
+                  placeholder="эффекты порога"
+                  aria-label={`Эффекты порога ${pct}`}
+                  value={tier?.effects || ""}
+                  onChange={(e) =>
+                    onChange((c) => ({
+                      ...c,
+                      rollTiers: {
+                        ...ensureTiers(),
+                        ...c.rollTiers,
+                        [pct]: { ...(c.rollTiers?.[pct] || {}), effects: e.target.value },
+                      },
+                    }))
+                  }
+                />
+              </div>
+            );
+          })}
         </div>
       ) : null}
     </article>

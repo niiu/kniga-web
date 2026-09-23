@@ -29,6 +29,10 @@ export function getTargetForPercent(
   return runtime.getTargetForPercent(diceNotation, vars, percent);
 }
 
+export function resolveRollTierKey(rollValue: number, max: number): "0" | "25" | "50" | "85" | "100" {
+  return runtime.resolveRollTierKey(rollValue, max) as "0" | "25" | "50" | "85" | "100";
+}
+
 export function applyEffects(effects: string | undefined, state: GameState): GameState {
   return runtime.applyEffects(effects, state);
 }

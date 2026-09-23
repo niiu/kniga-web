@@ -544,11 +544,16 @@ function ChoiceCard({
       </div>
       {tiersOpen ? (
         <div className="mt-2 space-y-2">
-          <p className="text-xs text-muted-foreground">
-            {choice.roll?.trim()
-              ? `Пороги от максимума броска (${getDiceMax(choice.roll, vars)}). Пустая сцена — как у ответа.`
-              : "Пороги броска. Сначала задайте формулу, чтобы увидеть числа на кубике."}
-          </p>
+          <div className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
+            <p>
+              {choice.roll?.trim()
+                ? `Пороги от максимума броска (${getDiceMax(choice.roll, vars)}). Пустая сцена — как у ответа.`
+                : "Пороги броска. Сначала задайте формулу, чтобы увидеть числа на кубике."}
+            </p>
+            <button type="button" className="shrink-0" onClick={() => setTiersOpen(false)}>
+              Закрыть
+            </button>
+          </div>
           {TIER_KEYS.map((pct) => {
             const tier = (choice.rollTiers ?? ensureTiers())[pct];
             return (

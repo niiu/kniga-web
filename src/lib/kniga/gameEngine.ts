@@ -7,6 +7,7 @@
  */
 import type { Choice, Scene, Story } from "./types.ts";
 import * as runtime from "./engine/runtime.js";
+import { normalizeChapters, validChapterId } from "./chapters.ts";
 
 export interface GameState {
   variables: Record<string, number>;
@@ -167,6 +168,7 @@ export function isConditionValid(
 export function normalizeLoadedStory(loaded: unknown): Story {
   const data = (loaded ?? {}) as Partial<Story> & { scenes?: unknown };
   const scenes = Array.isArray(data.scenes) ? data.scenes : [];
+  const chapters = normalizeChapters(data.chapters);
 
   let startScene = data.startScene;
   if (!scenes.some((s: unknown) => (s as Scene)?.id === startScene)) {
@@ -233,6 +235,7 @@ export function normalizeLoadedStory(loaded: unknown): Story {
         })
       : undefined;
 
+    const chapterId = validChapterId(s.chapterId, chapters);
     return {
       id: sceneId,
       text: s.text || "",
@@ -241,6 +244,7 @@ export function normalizeLoadedStory(loaded: unknown): Story {
       npcName: s.npcName,
       npcEmotion: s.npcEmotion,
       npcResponses,
+      ...(chapterId ? { chapterId } : {}),
     };
   });
 
@@ -258,6 +262,7 @@ export function normalizeLoadedStory(loaded: unknown): Story {
     suggestedEmotions: Array.isArray(data.suggestedEmotions) ? data.suggestedEmotions : [],
     characterName: data.characterName,
     characterDescription: data.characterDescription,
+    ...(chapters.length > 0 ? { chapters } : {}),
     knigaMarker: typeof (data as { knigaMarker?: unknown }).knigaMarker === "string"
       ? (data as { knigaMarker?: string }).knigaMarker
       : undefined,
@@ -268,6 +273,7 @@ export function normalizeLoadedStory(loaded: unknown): Story {
             ? normalizeLoadedStory({
                 scenes: [d.scene],
                 startScene: d.scene.id,
+                chapters: data.chapters,
                 variables: {},
                 items: {},
                 suggestedVariables: [],

@@ -3,6 +3,15 @@ import type { Choice, Scene, Story } from "./types.ts";
 import { normalizeLoadedStory } from "./gameEngine.ts";
 import { defaultStory } from "./defaultStory.ts";
 import { reorderScenesByInsert } from "./reorder.ts";
+import {
+  assignSceneToChapter,
+  clearChapterAssignment,
+  createChapter,
+  detachChapter,
+  moveChapter,
+  renameChapter,
+  reorderScenesInChapter,
+} from "./chapters.ts";
 import { clearActiveDraft, syncActiveDraft } from "./draftsStore.ts";
 import { uid } from "@/lib/utils.ts";
 
@@ -101,6 +110,13 @@ interface StoryStore {
   restoreDeletedScene: (deletedIndex: number) => void;
   permanentlyDeleteDeletedScene: (deletedIndex: number) => void;
   reorderScene: (fromId: string, insertBefore: number) => void;
+  reorderScenesInGroup: (chapterId: string | null, fromId: string, insertBefore: number) => void;
+  addChapter: () => string;
+  renameChapter: (id: string, title: string) => void;
+  moveChapterBy: (id: string, direction: -1 | 1) => void;
+  removeChapter: (id: string) => void;
+  setSceneChapter: (sceneId: string, chapterId: string | null) => void;
+  addSceneInChapter: (chapterId: string) => string;
   moveChoice: (sceneId: string, fromIndex: number, toIndex: number) => void;
   addChoice: (sceneId: string, choice: Choice) => void;
   insertChoice: (sceneId: string, choice: Choice) => void;
@@ -201,9 +217,15 @@ export const useStoryStore = create<StoryStore>()((set, get) => {
     },
     insertSceneAfter: (afterId) => {
       const newId = `scene${Date.now()}`;
-      const newScene: Scene = { id: newId, text: "Новая сцена...", choices: [] };
       updateStory((s) => {
         const index = s.scenes.findIndex((sc) => sc.id === afterId);
+        const inherited = index === -1 ? undefined : s.scenes[index]?.chapterId;
+        const newScene: Scene = {
+          id: newId,
+          text: "Новая сцена...",
+          choices: [],
+          ...(inherited ? { chapterId: inherited } : {}),
+        };
         if (index === -1) return { ...s, scenes: [...s.scenes, newScene] };
         const scenes = [...s.scenes];
         scenes.splice(index + 1, 0, newScene);
@@ -258,6 +280,70 @@ export const useStoryStore = create<StoryStore>()((set, get) => {
         if (scenes === s.scenes) return s;
         return { ...s, scenes };
       }),
+    reorderScenesInGroup: (chapterId, fromId, insertBefore) =>
+      updateStory((s) => {
+        const scenes = reorderScenesInChapter(s.scenes, chapterId, fromId, insertBefore);
+        if (scenes === s.scenes) return s;
+        return { ...s, scenes };
+      }),
+    addChapter: () => {
+      const id = uid("ch");
+      updateStory((s) => {
+        const chapters = createChapter(s.chapters ?? [], id);
+        if (chapters === s.chapters) return s;
+        return { ...s, chapters };
+      });
+      return id;
+    },
+    renameChapter: (id, title) =>
+      updateStory((s) => {
+        const chapters = renameChapter(s.chapters ?? [], id, title);
+        if (chapters === s.chapters) return s;
+        return { ...s, chapters };
+      }),
+    moveChapterBy: (id, direction) =>
+      updateStory((s) => {
+        const chapters = moveChapter(s.chapters ?? [], id, direction);
+        if (chapters === s.chapters) return s;
+        return { ...s, chapters };
+      }),
+    removeChapter: (id) =>
+      updateStory((s) => {
+        const detached = detachChapter(s.chapters ?? [], s.scenes, id);
+        if (detached.chapters === s.chapters) return s;
+        const deletedScenes = (s.deletedScenes || []).map((entry) => ({
+          ...entry,
+          scene: clearChapterAssignment([entry.scene], id)[0],
+        }));
+        return { ...s, chapters: detached.chapters, scenes: detached.scenes, deletedScenes };
+      }),
+    setSceneChapter: (sceneId, chapterId) =>
+      updateStory((s) => {
+        const scenes = assignSceneToChapter(s.scenes, sceneId, chapterId, s.chapters ?? []);
+        if (scenes === s.scenes) return s;
+        return { ...s, scenes };
+      }),
+    addSceneInChapter: (chapterId) => {
+      const newId = `scene${Date.now()}`;
+      let created = false;
+      updateStory((s) => {
+        if (!(s.chapters || []).some((chapter) => chapter.id === chapterId)) return s;
+        created = true;
+        const newScene: Scene = { id: newId, text: "Новая сцена...", choices: [], chapterId };
+        const scenes = [...s.scenes];
+        let insertAt = scenes.length;
+        for (let i = scenes.length - 1; i >= 0; i--) {
+          if (scenes[i]?.chapterId === chapterId) {
+            insertAt = i + 1;
+            break;
+          }
+        }
+        scenes.splice(insertAt, 0, newScene);
+        return { ...s, scenes };
+      });
+      if (created) set({ currentSceneId: newId });
+      return newId;
+    },
     moveChoice: (sceneId, fromIndex, toIndex) =>
       get().updateScene(sceneId, (scene) => {
         if (toIndex < 0 || toIndex >= scene.choices.length) return scene;

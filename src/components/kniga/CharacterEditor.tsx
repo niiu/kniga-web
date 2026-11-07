@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { StartValuePicker } from "@/components/kniga/StartValuePicker.tsx";
 import { useStoryStore } from "@/lib/kniga/storyStore.ts";
 
 interface Props {
@@ -13,6 +14,7 @@ interface Props {
   onRenameStartingVariable: (oldKey: string, newKey: string) => void;
   onRemoveStartingVariable: (key: string) => void;
   onAddStartingVariable: (name: string, value: number) => void;
+  onApplyStartingVariables: (entries: Record<string, number>) => void;
   onResetCurrentToStarting: () => void;
 }
 
@@ -22,6 +24,7 @@ export function CharacterEditor({
   onRenameStartingVariable,
   onRemoveStartingVariable,
   onAddStartingVariable,
+  onApplyStartingVariables,
   onResetCurrentToStarting,
 }: Props) {
   const story = useStoryStore((s) => s.story);
@@ -78,7 +81,10 @@ export function CharacterEditor({
                   className="w-24 text-center"
                   value={story.variables[key]}
                   onChange={(e) =>
-                    updateStoryVariables((v) => ({ ...v, [key]: parseInt(e.target.value, 10) || 0 }))
+                    updateStoryVariables((v) => ({
+                      ...v,
+                      [key]: parseInt(e.target.value, 10) || 0,
+                    }))
                   }
                 />
                 <Badge>{origin ? `сцена ${origin}` : "базовая"}</Badge>
@@ -157,6 +163,13 @@ export function CharacterEditor({
             {Object.keys(startingVariables).length === 0 ? (
               <p className="p-2 text-xs text-ink-subtle">Нет сохранённых начальных значений.</p>
             ) : null}
+            <StartValuePicker
+              title="Из текущих характеристик"
+              emptyText="В листе персонажа нет характеристик. Название и число можно ввести ниже."
+              sources={story.variables}
+              starting={startingVariables}
+              onApply={onApplyStartingVariables}
+            />
             <div className="flex gap-2">
               <Input
                 value={startName}

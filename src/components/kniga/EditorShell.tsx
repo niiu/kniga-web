@@ -36,6 +36,7 @@ import {
   type CleanBase,
   type EditorTab,
 } from "@/lib/kniga/storyStore.ts";
+import { mergeStartValues } from "@/lib/kniga/startObject.ts";
 import {
   applyEffects,
   evaluateRollOutcome,
@@ -803,6 +804,13 @@ export function EditorShell() {
               onAddStartingVariable={(name, value) =>
                 setCleanBase((b) => ({ ...b, variables: { ...b.variables, [name]: value } }))
               }
+              onApplyStartingVariables={(entries) =>
+                setCleanBase((b) => {
+                  const variables = mergeStartValues(b.variables, entries);
+                  if (variables === b.variables) return b;
+                  return { ...b, variables };
+                })
+              }
               onResetCurrentToStarting={() => {
                 updateStoryVariables(() => ({ ...cleanBase.variables }));
                 toast.success("Характеристики сброшены к стартовым");
@@ -836,6 +844,13 @@ export function EditorShell() {
               }
               onAddStartingItem={(name, count) =>
                 setCleanBase((b) => ({ ...b, items: { ...b.items, [name]: count } }))
+              }
+              onApplyStartingItems={(entries) =>
+                setCleanBase((b) => {
+                  const items = mergeStartValues(b.items, entries);
+                  if (items === b.items) return b;
+                  return { ...b, items };
+                })
               }
               onResetCurrentToStarting={() => {
                 updateStoryItems(() => ({ ...cleanBase.items }));

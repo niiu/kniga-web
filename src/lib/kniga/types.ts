@@ -29,10 +29,17 @@ export interface Choice {
   npcLineIndex?: number;
 }
 
+export interface Chapter {
+  id: string;
+  title: string;
+}
+
 export interface Scene {
   id: string;
   text: string;
   choices: Choice[];
+  /** Editor grouping only. Absent means the scene is not in a chapter. */
+  chapterId?: string;
   isDialogue?: boolean;   // В диалоговом режиме ответы по умолчанию возвращают в текущую сцену
   npcName?: string;       // Имя НПС (для отображения в истории диалога, напр. "Стражник: ...")
   npcEmotion?: string;    // Эмоция для стартовой реплики (отображается как Имя(Эмоция): текст)
@@ -60,6 +67,8 @@ export interface Story {
   suggestedEmotions: string[];  // Подсказки эмоций для реплик НПС
   characterName?: string;
   characterDescription?: string;
+  /** Editor grouping. Omitted on books that have no chapters. */
+  chapters?: Chapter[];
   deletedScenes?: Array<{ scene: Scene; originalIndex: number }>;
   /** Маркер подлинности файла Книги (ставится при экспорте). */
   knigaMarker?: string;

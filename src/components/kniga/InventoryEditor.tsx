@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { StartValuePicker } from "@/components/kniga/StartValuePicker.tsx";
 import { useStoryStore } from "@/lib/kniga/storyStore.ts";
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
   onRenameStartingItem: (oldName: string, newName: string) => void;
   onRemoveStartingItem: (name: string) => void;
   onAddStartingItem: (name: string, count: number) => void;
+  onApplyStartingItems: (entries: Record<string, number>) => void;
   onResetCurrentToStarting: () => void;
 }
 
@@ -20,6 +22,7 @@ export function InventoryEditor({
   onRenameStartingItem,
   onRemoveStartingItem,
   onAddStartingItem,
+  onApplyStartingItems,
   onResetCurrentToStarting,
 }: Props) {
   const story = useStoryStore((s) => s.story);
@@ -43,7 +46,11 @@ export function InventoryEditor({
           const origin = story.itemOrigins?.[name];
           return (
             <div key={name} className="flex items-center gap-2 rounded-lg bg-card p-3">
-              <Input defaultValue={name} onBlur={(e) => renameStoryItem(name, e.target.value)} className="flex-1" />
+              <Input
+                defaultValue={name}
+                onBlur={(e) => renameStoryItem(name, e.target.value)}
+                className="flex-1"
+              />
               <Input
                 type="number"
                 className="w-24 text-center"
@@ -114,9 +121,15 @@ export function InventoryEditor({
                   type="number"
                   className="h-9 w-20 text-center text-sm"
                   value={count}
-                  onChange={(e) => onSetStartingItem(name, Math.max(0, parseInt(e.target.value, 10) || 0))}
+                  onChange={(e) =>
+                    onSetStartingItem(name, Math.max(0, parseInt(e.target.value, 10) || 0))
+                  }
                 />
-                <button type="button" className="size-8 text-destructive" onClick={() => onRemoveStartingItem(name)}>
+                <button
+                  type="button"
+                  className="size-8 text-destructive"
+                  onClick={() => onRemoveStartingItem(name)}
+                >
                   <X className="mx-auto size-4" />
                 </button>
               </div>
@@ -124,6 +137,13 @@ export function InventoryEditor({
             {Object.keys(startingItems).length === 0 ? (
               <p className="p-2 text-xs text-ink-subtle">Нет сохранённых начальных значений.</p>
             ) : null}
+            <StartValuePicker
+              title="Из текущего инвентаря"
+              emptyText="В инвентаре нет предметов. Название и число можно ввести ниже."
+              sources={story.items}
+              starting={startingItems}
+              onApply={onApplyStartingItems}
+            />
             <div className="flex gap-2">
               <Input
                 value={startName}
